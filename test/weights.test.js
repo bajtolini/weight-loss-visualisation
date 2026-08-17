@@ -19,6 +19,7 @@ test('parseWeights tolerates blank lines and CRLF', () => {
 test('parseWeights throws on malformed line', () => {
   assert.throws(() => parseWeights('date,weight,delta\nnot-a-date,87.4,\n'), /Bad line 2/);
   assert.throws(() => parseWeights('date,weight,delta\n2026-08-12,abc,\n'), /Bad line 2/);
+  assert.throws(() => parseWeights('date,weight,delta\n2026-08-12,,\n'), /Bad line 2/);
 });
 
 test('serialiseWeights round-trips and formats one decimal', () => {

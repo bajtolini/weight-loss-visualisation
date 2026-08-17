@@ -18,7 +18,7 @@ export function parseWeights(text) {
     const weight = Number(weightStr);
     const delta = deltaStr.trim() === '' ? null : Number(deltaStr);
     if (parts.length < 2 || parts.length > 3 || !DATE_RE.test(date) ||
-        !Number.isFinite(weight) || (delta !== null && !Number.isFinite(delta))) {
+        !weightStr.trim() || !Number.isFinite(weight) || (delta !== null && !Number.isFinite(delta))) {
       throw new Error(`Bad line ${i + 1}: ${raw}`);
     }
     entries.push({ date, weight, delta });
