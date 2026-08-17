@@ -25,10 +25,13 @@
   .axis line, .axis path { stroke:var(--muted); stroke-width:1; }
   .ref line { stroke:var(--ref); stroke-dasharray:4 4; }
   .series { fill:none; stroke:var(--line); stroke-width:2; }
+  .pt { cursor:pointer; }
   .pt circle { fill:var(--line); }
   .pt:hover circle { r:6; }
   .pt text { opacity:0; fill:var(--fg); font-weight:600; }
   .pt:hover text { opacity:1; }
+  .pt.show text { opacity:1; }
+  .pt.show circle { r:6; }
   table { width:100%; border-collapse:collapse; margin-top:1rem; }
   th, td { text-align:left; padding:.35rem .5rem; border-bottom:1px solid var(--panel); }
   td.down { color:var(--down); } td.up { color:var(--up); }
@@ -84,11 +87,16 @@ function renderChart(entries) {
     s += `<text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
   }
   s += `<path d="M${P.l},${P.t}V${P.t + ih}H${W - P.r}" fill="none"/>`;
-  // x labels: first, last, and up to 4 in between
+  // x labels: entry dates when there are few of them, else 6 evenly-spaced ticks; de-duplicated
   const ticks = 5;
-  for (let i = 0; i <= ticks; i++) {
-    const t = x0 + (x1 - x0) * (i / ticks);
+  const tickTimes = (entries.length >= 2 && entries.length <= 6)
+    ? entries.map(e => Date.parse(e.date))
+    : Array.from({ length: ticks + 1 }, (_, i) => x0 + (x1 - x0) * (i / ticks));
+  let lastLabel = null;
+  for (const t of tickTimes) {
     const d = new Date(t).toISOString().slice(0, 10);
+    if (d === lastLabel) continue;
+    lastLabel = d;
     s += `<text x="${x(t)}" y="${H - P.b + 16}" text-anchor="middle">${d}</text>`;
   }
   s += '</g>';
@@ -168,8 +176,12 @@ function ghHeaders(token) {
 }
 async function ghGet(cfg) {
   const res = await fetch(`${API}/${cfg.repo}/contents/weights.txt?ref=main`, { headers: ghHeaders(cfg.token), cache: 'no-store' });
-  if (!res.ok) throw new Error(`GitHub read failed (${res.status}) — check token/repo.`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`GitHub read failed (${res.status})${body.message ? ': ' + body.message : ''} — check token/repo.`);
+  }
   const j = await res.json();
+  if (typeof j.content !== 'string') throw new Error('weights.txt not found in that repo (check owner/repo).');
   const text = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), c => c.charCodeAt(0)));
   return { text, sha: j.sha };
 }
@@ -180,8 +192,13 @@ async function ghPut(cfg, content, sha, message) {
     method: 'PUT', headers: { ...ghHeaders(cfg.token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, content: btoa(bin), sha, branch: 'main' }),
   });
-  if (res.status === 409) throw new Error('File changed on GitHub meanwhile — press Save again.');
-  if (!res.ok) throw new Error(`GitHub write failed (${res.status}).`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 409 || res.status === 422) {
+      throw new Error(`File changed on GitHub meanwhile — press Save again.${body.message ? ' (' + body.message + ')' : ''}`);
+    }
+    throw new Error(`GitHub write failed (${res.status})${body.message ? ': ' + body.message : ''}.`);
+  }
 }
 
 // ---------- form ----------
@@ -212,6 +229,7 @@ function refreshForm() {
 }
 async function saveEntry(ev) {
   ev.preventDefault();
+  if (inFlight) return;
   const cfg = getConfig();
   const entry = readForm();
   const errors = validateEntry(entry, state.entries, todayISO());
@@ -245,6 +263,11 @@ async function init() {
   $('date').addEventListener('input', onInput);
   $('weight').addEventListener('input', onInput);
   $('form').addEventListener('submit', saveEntry);
+  $('chart').addEventListener('click', ev => {
+    const pt = ev.target.closest('.pt');
+    $('chart').querySelectorAll('.pt.show').forEach(g => g.classList.remove('show'));
+    if (pt) pt.classList.add('show');
+  });
   try {
     await loadAndRender();
     refreshForm();
