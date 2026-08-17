@@ -202,9 +202,11 @@ function refreshForm() {
     $('delta').textContent = '—';
   }
   const configured = Boolean(token && repo);
+  const touched = $('weight').value.trim() !== '';
   $('save').disabled = errors.length > 0 || !configured;
-  if (!configured) setMsg('Read-only: set a GitHub token in ⚙ to save entries.');
-  else setMsg(errors.join(' '), errors.length ? 'err' : '');
+  if (errors.length && touched) setMsg(errors.join(' '), 'err');
+  else if (!configured) setMsg('Read-only: set a GitHub token in ⚙ to save entries.');
+  else setMsg('');
 }
 async function saveEntry(ev) {
   ev.preventDefault();
