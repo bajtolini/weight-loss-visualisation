@@ -31,6 +31,8 @@ Without a token the page is read-only (chart + table).
 
 The token is stored in the browser's `localStorage` only — never in the repo. Repeat per browser/phone.
 
+**Caveat:** this page is served from `https://<user>.github.io/...`, and `localStorage` is scoped per origin — so the token sits in `localStorage` under the `<user>.github.io` origin, which is *shared by every GitHub Pages site published under that account*, not just this repo. That's why the token must be scoped to this single repo with **Contents: Read and write** only (no other permissions, no other repos). Set an expiry when you generate it (e.g. 1 year) and rotate it then. Anyone with access to that browser profile (or another GitHub Pages site under the same account, if it were ever compromised) could read and use it, so treat it like any other credential.
+
 ## Running locally
 
 ```

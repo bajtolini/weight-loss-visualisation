@@ -22,6 +22,11 @@ test('parseWeights throws on malformed line', () => {
   assert.throws(() => parseWeights('date,weight,delta\n2026-08-12,,\n'), /Bad line 2/);
 });
 
+test('parseWeights throws on calendar-invalid dates', () => {
+  assert.throws(() => parseWeights('date,weight,delta\n2026-02-31,80.0,\n'), /Bad line 2/);
+  assert.throws(() => parseWeights('date,weight,delta\n2026-13-45,80.0,\n'), /Bad line 2/);
+});
+
 test('serialiseWeights round-trips and formats one decimal', () => {
   const entries = parseWeights(SAMPLE);
   assert.equal(serialiseWeights(entries), SAMPLE);
@@ -83,6 +88,11 @@ test('previewDelta uses nearest earlier date', () => {
   assert.deepEqual(previewDelta(base, { date: '2026-08-19', weight: 87.0 }), { delta: -0.4, vsDate: '2026-08-12' });
   assert.deepEqual(previewDelta(base, { date: '2026-08-01', weight: 88 }), { delta: null, vsDate: null });
   assert.deepEqual(previewDelta([], { date: '2026-08-01', weight: 88 }), { delta: null, vsDate: null });
+});
+
+test('previewDelta returns null delta for non-finite weight', () => {
+  const base = recomputeDeltas([E('2026-08-12', 87.4), E('2026-08-26', 86.4)]);
+  assert.deepEqual(previewDelta(base, { date: '2026-08-19', weight: NaN }), { delta: null, vsDate: null });
 });
 
 test('todayISO formats local date', () => {

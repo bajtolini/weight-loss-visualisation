@@ -3,6 +3,11 @@
 export const HEADER = 'date,weight,delta';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+function isValidDate(date) {
+  return DATE_RE.test(date) && Number.isFinite(Date.parse(date)) &&
+    new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date;
+}
+
 export function formatKg(n) {
   return n === null || n === undefined ? '' : n.toFixed(1);
 }
@@ -17,7 +22,7 @@ export function parseWeights(text) {
     const [date, weightStr, deltaStr = ''] = parts;
     const weight = Number(weightStr);
     const delta = deltaStr.trim() === '' ? null : Number(deltaStr);
-    if (parts.length < 2 || parts.length > 3 || !DATE_RE.test(date) ||
+    if (parts.length < 2 || parts.length > 3 || !isValidDate(date) ||
         !weightStr.trim() || !Number.isFinite(weight) || (delta !== null && !Number.isFinite(delta))) {
       throw new Error(`Bad line ${i + 1}: ${raw}`);
     }
@@ -51,6 +56,7 @@ export function insertWeighIn(entries, { date, weight }) {
 }
 
 export function previewDelta(entries, { date, weight }) {
+  if (typeof weight !== 'number' || !Number.isFinite(weight)) return { delta: null, vsDate: null };
   const earlier = entries.filter(e => e.date < date).sort((a, b) => a.date.localeCompare(b.date));
   if (earlier.length === 0) return { delta: null, vsDate: null };
   const prev = earlier[earlier.length - 1];
@@ -60,6 +66,7 @@ export function previewDelta(entries, { date, weight }) {
 export function validateEntry({ date, weight }, entries, today) {
   const errors = [];
   if (!date || !DATE_RE.test(date)) errors.push('Pick a date.');
+  else if (!isValidDate(date)) errors.push('Pick a valid date.');
   else if (date > today) errors.push('Date cannot be in the future.');
   else if (entries.some(e => e.date === date)) errors.push(`An entry for ${date} already exists.`);
   if (typeof weight !== 'number' || !Number.isFinite(weight)) errors.push('Enter a weight.');
