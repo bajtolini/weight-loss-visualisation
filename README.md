@@ -42,5 +42,7 @@ Open http://localhost:8000/ (`file://` will not load `weights.txt`). Saving from
 ## Tests
 
 ```
-node --test
+npm test
 ```
+
+(equivalently `node --test`). Requires Node 20+ — `package.json` sets `"type": "module"`, so both `weights.js` and `test/weights.test.js` load as ES modules.

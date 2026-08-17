@@ -1,0 +1,8 @@
+{
+  "name": "weight-loss-visualisation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
