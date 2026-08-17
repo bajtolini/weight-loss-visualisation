@@ -59,7 +59,7 @@
 <table id="table"><thead><tr><th>Date</th><th>Weight</th><th>Delta</th></tr></thead><tbody></tbody></table>
 
 <script type="module">
-import { parseWeights, formatKg } from './weights.js';
+import { parseWeights, formatKg, insertWeighIn, validateEntry, previewDelta, serialiseWeights, todayISO } from './weights.js';
 
 const state = { entries: [] };
 const $ = id => document.getElementById(id);
@@ -132,7 +132,115 @@ async function loadAndRender() {
   renderTable(state.entries);
 }
 
-loadAndRender().catch(err => { $('msg').textContent = err.message; $('msg').className = 'err'; });
+// ---------- config (localStorage only) ----------
+const LS_TOKEN = 'wlv.token', LS_REPO = 'wlv.repo';
+
+function guessRepo() {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  const seg = location.pathname.split('/').filter(Boolean)[0];
+  return m && seg ? `${m[1]}/${seg}` : '';
+}
+function getConfig() {
+  return {
+    token: localStorage.getItem(LS_TOKEN) || '',
+    repo: localStorage.getItem(LS_REPO) || guessRepo(),
+  };
+}
+function setMsg(text, cls = '') { $('msg').textContent = text; $('msg').className = cls; }
+
+$('cfgBtn').addEventListener('click', () => {
+  const cfg = getConfig();
+  $('token').value = cfg.token; $('repo').value = cfg.repo;
+  $('config').classList.toggle('open');
+});
+$('cfgSave').addEventListener('click', () => {
+  localStorage.setItem(LS_TOKEN, $('token').value.trim());
+  localStorage.setItem(LS_REPO, $('repo').value.trim());
+  $('config').classList.remove('open');
+  refreshForm();
+  setMsg('Settings saved in this browser only.', 'ok');
+});
+
+// ---------- GitHub Contents API ----------
+const API = 'https://api.github.com/repos';
+function ghHeaders(token) {
+  return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+}
+async function ghGet(cfg) {
+  const res = await fetch(`${API}/${cfg.repo}/contents/weights.txt?ref=main`, { headers: ghHeaders(cfg.token), cache: 'no-store' });
+  if (!res.ok) throw new Error(`GitHub read failed (${res.status}) — check token/repo.`);
+  const j = await res.json();
+  const text = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), c => c.charCodeAt(0)));
+  return { text, sha: j.sha };
+}
+async function ghPut(cfg, content, sha, message) {
+  const bytes = new TextEncoder().encode(content);
+  let bin = ''; bytes.forEach(b => { bin += String.fromCharCode(b); });
+  const res = await fetch(`${API}/${cfg.repo}/contents/weights.txt`, {
+    method: 'PUT', headers: { ...ghHeaders(cfg.token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, content: btoa(bin), sha, branch: 'main' }),
+  });
+  if (res.status === 409) throw new Error('File changed on GitHub meanwhile — press Save again.');
+  if (!res.ok) throw new Error(`GitHub write failed (${res.status}).`);
+}
+
+// ---------- form ----------
+function readForm() {
+  const date = $('date').value;
+  const raw = $('weight').value.trim();
+  const weight = raw === '' ? NaN : Number(raw);
+  return { date, weight };
+}
+function refreshForm() {
+  const entry = readForm();
+  const errors = validateEntry(entry, state.entries, todayISO());
+  const { token, repo } = getConfig();
+  if (Number.isFinite(entry.weight) && entry.date) {
+    const { delta, vsDate } = previewDelta(state.entries, entry);
+    $('delta').textContent = delta === null ? 'first entry' : `${delta > 0 ? '+' : ''}${formatKg(delta)} kg vs ${vsDate}`;
+  } else {
+    $('delta').textContent = '—';
+  }
+  const configured = Boolean(token && repo);
+  $('save').disabled = errors.length > 0 || !configured;
+  if (!configured) setMsg('Read-only: set a GitHub token in ⚙ to save entries.');
+  else setMsg(errors.join(' '), errors.length ? 'err' : '');
+}
+async function saveEntry(ev) {
+  ev.preventDefault();
+  const cfg = getConfig();
+  const entry = readForm();
+  const errors = validateEntry(entry, state.entries, todayISO());
+  if (errors.length) { setMsg(errors.join(' '), 'err'); return; }
+  $('save').disabled = true;
+  setMsg('Saving…');
+  try {
+    const { text, sha } = await ghGet(cfg);
+    const fresh = parseWeights(text);
+    const next = insertWeighIn(fresh, entry);           // throws if duplicate on GitHub side
+    await ghPut(cfg, serialiseWeights(next), sha, `weigh-in ${entry.date}: ${formatKg(entry.weight)}`);
+    state.entries = next;
+    renderChart(state.entries); renderTable(state.entries);
+    $('weight').value = '';
+    setMsg(`Saved ${entry.date}: ${formatKg(entry.weight)} kg.`, 'ok');
+  } catch (err) {
+    setMsg(err.message, 'err');
+  } finally {
+    refreshForm();
+  }
+}
+
+// ---------- init ----------
+async function init() {
+  $('date').value = todayISO();
+  $('date').max = todayISO();
+  $('date').addEventListener('input', refreshForm);
+  $('weight').addEventListener('input', refreshForm);
+  $('form').addEventListener('submit', saveEntry);
+  try { await loadAndRender(); } catch (err) { setMsg(err.message, 'err'); }
+  refreshForm();
+}
+init();
 </script>
 </body>
 </html>
