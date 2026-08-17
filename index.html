@@ -241,8 +241,9 @@ async function saveEntry(ev) {
 async function init() {
   $('date').value = todayISO();
   $('date').max = todayISO();
-  $('date').addEventListener('input', () => { setMsg(''); refreshForm(); });
-  $('weight').addEventListener('input', () => { setMsg(''); refreshForm(); });
+  const onInput = () => { if (inFlight) return; setMsg(''); refreshForm(); };
+  $('date').addEventListener('input', onInput);
+  $('weight').addEventListener('input', onInput);
   $('form').addEventListener('submit', saveEntry);
   try {
     await loadAndRender();
