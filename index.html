@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weight loss</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231a7f37'/%3E%3Cpath d='M7 11h18L16 23z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
   :root { --bg:#fff; --fg:#111; --muted:#666; --line:#2a6fdb; --ref:#999; --down:#1a7f37; --up:#c62828; --panel:#f4f4f6; }
   @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --muted:#aaa; --line:#6ea0ff; --ref:#777; --panel:#1d1d22; } }
@@ -126,7 +127,7 @@ function renderChart(entries) {
 function renderTable(entries) {
   const rows = [...entries].reverse().map(e => {
     const cls = e.delta === null ? '' : (e.delta < 0 ? 'down' : (e.delta > 0 ? 'up' : ''));
-    const arrow = cls === 'down' ? '↓ ' : (cls === 'up' ? '↑ ' : '');
+    const arrow = cls === 'down' ? '▾ ' : (cls === 'up' ? '▴ ' : ''); // ▾ caret-down / ▴ caret-up
     const d = e.delta === null ? '—' : arrow + (e.delta > 0 ? '+' : '') + formatKg(e.delta);
     return `<tr><td>${e.date}</td><td>${formatKg(e.weight)} kg</td><td class="${cls}">${d}</td></tr>`;
   });
