@@ -34,7 +34,7 @@
   .pt.show circle { r:6; }
   table { width:100%; border-collapse:collapse; margin-top:1rem; }
   th, td { text-align:left; padding:.35rem .5rem; border-bottom:1px solid var(--panel); }
-  td.down { color:var(--down); } td.up { color:var(--up); }
+  td.down { color:var(--down); font-weight:600; } td.up { color:var(--up); font-weight:600; }
 </style>
 </head>
 <body>
@@ -126,7 +126,8 @@ function renderChart(entries) {
 function renderTable(entries) {
   const rows = [...entries].reverse().map(e => {
     const cls = e.delta === null ? '' : (e.delta < 0 ? 'down' : (e.delta > 0 ? 'up' : ''));
-    const d = e.delta === null ? '—' : (e.delta > 0 ? '+' : '') + formatKg(e.delta);
+    const arrow = cls === 'down' ? '↓ ' : (cls === 'up' ? '↑ ' : '');
+    const d = e.delta === null ? '—' : arrow + (e.delta > 0 ? '+' : '') + formatKg(e.delta);
     return `<tr><td>${e.date}</td><td>${formatKg(e.weight)} kg</td><td class="${cls}">${d}</td></tr>`;
   });
   $('table').querySelector('tbody').innerHTML = rows.join('');
