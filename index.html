@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weight loss</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231a7f37'/%3E%3Cpath d='M7 11h18L16 23z' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root { --bg:#fff; --fg:#111; --muted:#666; --line:#2a6fdb; --ref:#999; --down:#1a7f37; --up:#c62828; --panel:#f4f4f6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --muted:#aaa; --line:#6ea0ff; --ref:#777; --panel:#1d1d22; } }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:1rem; font:15px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); max-width:900px; margin-inline:auto; }
+  h1 { font-size:1.4rem; margin:.2rem 0 1rem; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font-size:1.1rem; background:none; border:1px solid var(--muted); color:var(--fg); border-radius:6px; padding:.2rem .5rem; cursor:pointer; }
+  form, #config { background:var(--panel); border-radius:8px; padding:.8rem; margin-bottom:1rem; display:grid; gap:.6rem; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); align-items:end; }
+  label { display:flex; flex-direction:column; gap:.2rem; font-size:.85rem; color:var(--muted); }
+  input { font:inherit; padding:.4rem; border:1px solid var(--muted); border-radius:6px; background:var(--bg); color:var(--fg); }
+  #delta { font-weight:600; color:var(--fg); }
+  button.primary { font:inherit; padding:.5rem .9rem; border:0; border-radius:6px; background:var(--line); color:#fff; cursor:pointer; }
+  button.primary:disabled { opacity:.5; cursor:not-allowed; }
+  #msg { grid-column:1/-1; min-height:1.2em; font-size:.9rem; }
+  #msg.err { color:var(--up); } #msg.ok { color:var(--down); }
+  #config { display:none; } #config.open { display:grid; }
+  svg { width:100%; height:auto; display:block; }
+  .axis text, .ref text, .pt text { font-size:11px; fill:var(--muted); }
+  .axis line, .axis path { stroke:var(--muted); stroke-width:1; }
+  .ref line { stroke:var(--ref); stroke-dasharray:4 4; }
+  .series { fill:none; stroke:var(--line); stroke-width:2; }
+  .pt { cursor:pointer; }
+  .pt circle { fill:var(--line); }
+  .pt:hover circle { r:6; }
+  .pt text { opacity:0; fill:var(--fg); font-weight:600; }
+  .pt:hover text { opacity:1; }
+  .pt.show text { opacity:1; }
+  .pt.show circle { r:6; }
+  table { width:100%; border-collapse:collapse; margin-top:1rem; }
+  th, td { text-align:left; padding:.35rem .5rem; border-bottom:1px solid var(--panel); }
+  td.down { color:var(--down); font-weight:600; } td.up { color:var(--up); font-weight:600; }
+</style>
+</head>
+<body>
+<h1>Weight loss <button id="cfgBtn" title="Settings" type="button">⚙</button></h1>
+
+<div id="config">
+  <label>GitHub token (fine-grained, Contents read/write on this repo)
+    <input id="token" type="password" autocomplete="off">
+  </label>
+  <label>owner/repo
+    <input id="repo" type="text" placeholder="user/weight-loss-visualisation">
+  </label>
+  <button class="primary" id="cfgSave" type="button">Save settings</button>
+</div>
+
+<form id="form" novalidate>
+  <label>Date <input id="date" type="date" required></label>
+  <label>Weight (kg) <input id="weight" type="number" step="0.1" min="40" max="150" inputmode="decimal" required></label>
+  <label>Delta <span id="delta">—</span></label>
+  <button class="primary" id="save" type="submit" disabled>Save</button>
+  <div id="msg"></div>
+</form>
+
+<div id="chart"></div>
+<table id="table"><thead><tr><th>Date</th><th>Weight</th><th>Delta</th></tr></thead><tbody></tbody></table>
+
+<script type="module">
+import { parseWeights, formatKg, insertWeighIn, validateEntry, previewDelta, serialiseWeights, todayISO } from './weights.js';
+
+const state = { entries: [] };
+const $ = id => document.getElementById(id);
+
+const Y_MIN = 68, Y_MAX = 90, REF_LINES = [87.4, 70];
+
+function renderChart(entries) {
+  const W = 900, H = 400, P = { t: 20, r: 20, b: 40, l: 45 };
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const y = v => P.t + ih * (1 - (v - Y_MIN) / (Y_MAX - Y_MIN));
+  const dates = entries.map(e => Date.parse(e.date));
+  const x0 = dates.length ? Math.min(...dates) : Date.now() - 864e5;
+  const x1 = dates.length > 1 ? Math.max(...dates) : x0 + 30 * 864e5;
+  const x = t => P.l + iw * ((t - x0) / (x1 - x0));
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight over time">`;
+  // y grid + axis labels every 2 kg
+  s += '<g class="axis">';
+  for (let v = Y_MIN; v <= Y_MAX; v += 2) {
+    s += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" stroke-opacity=".15"/>`;
+    s += `<text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+  }
+  s += `<path d="M${P.l},${P.t}V${P.t + ih}H${W - P.r}" fill="none"/>`;
+  // x labels: entry dates when there are few of them, else 6 evenly-spaced ticks; de-duplicated
+  const ticks = 5;
+  const tickTimes = (entries.length >= 2 && entries.length <= 6)
+    ? entries.map(e => Date.parse(e.date))
+    : Array.from({ length: ticks + 1 }, (_, i) => x0 + (x1 - x0) * (i / ticks));
+  let lastLabel = null;
+  for (const t of tickTimes) {
+    const d = new Date(t).toISOString().slice(0, 10);
+    if (d === lastLabel) continue;
+    lastLabel = d;
+    s += `<text x="${x(t)}" y="${H - P.b + 16}" text-anchor="middle">${d}</text>`;
+  }
+  s += '</g>';
+  // reference lines
+  s += '<g class="ref">';
+  for (const v of REF_LINES) {
+    s += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}"/>`;
+    s += `<text x="${W - P.r}" y="${y(v) - 4}" text-anchor="end">${v} kg</text>`;
+  }
+  s += '</g>';
+  // series
+  if (entries.length) {
+    const pts = entries.map(e => [x(Date.parse(e.date)), y(e.weight)]);
+    s += `<path class="series" d="${pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('')}"/>`;
+    entries.forEach((e, i) => {
+      const [px, py] = pts[i];
+      const label = `${e.date} · ${formatKg(e.weight)} kg${e.delta === null ? '' : ' · ' + (e.delta > 0 ? '+' : '') + formatKg(e.delta)}`;
+      const anchor = px > W * 0.7 ? 'end' : (px < W * 0.3 ? 'start' : 'middle');
+      s += `<g class="pt"><circle cx="${px}" cy="${py}" r="4"/><title>${esc(label)}</title>` +
+           `<text x="${px}" y="${py - 10}" text-anchor="${anchor}">${esc(label)}</text></g>`;
+    });
+  }
+  s += '</svg>';
+  $('chart').innerHTML = s;
+}
+
+function renderTable(entries) {
+  const rows = [...entries].reverse().map(e => {
+    const cls = e.delta === null ? '' : (e.delta < 0 ? 'down' : (e.delta > 0 ? 'up' : ''));
+    const arrow = cls === 'down' ? '▾ ' : (cls === 'up' ? '▴ ' : ''); // ▾ caret-down / ▴ caret-up
+    const d = e.delta === null ? '—' : arrow + (e.delta > 0 ? '+' : '') + formatKg(e.delta);
+    return `<tr><td>${e.date}</td><td>${formatKg(e.weight)} kg</td><td class="${cls}">${d}</td></tr>`;
+  });
+  $('table').querySelector('tbody').innerHTML = rows.join('');
+}
+
+async function loadAndRender() {
+  const res = await fetch(`./weights.txt?t=${Date.now()}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Could not load weights.txt (${res.status})`);
+  state.entries = parseWeights(await res.text());
+  renderChart(state.entries);
+  renderTable(state.entries);
+}
+
+// ---------- config (localStorage only) ----------
+const LS_TOKEN = 'wlv.token', LS_REPO = 'wlv.repo';
+
+function guessRepo() {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  const seg = location.pathname.split('/').filter(Boolean)[0];
+  return m && seg ? `${m[1]}/${seg}` : '';
+}
+function getConfig() {
+  return {
+    token: localStorage.getItem(LS_TOKEN) || '',
+    repo: localStorage.getItem(LS_REPO) || guessRepo(),
+  };
+}
+function setMsg(text, cls = '') { $('msg').textContent = text; $('msg').className = cls; }
+
+$('cfgBtn').addEventListener('click', () => {
+  const cfg = getConfig();
+  $('token').value = cfg.token; $('repo').value = cfg.repo;
+  $('config').classList.toggle('open');
+});
+$('cfgSave').addEventListener('click', () => {
+  localStorage.setItem(LS_TOKEN, $('token').value.trim());
+  localStorage.setItem(LS_REPO, $('repo').value.trim());
+  $('config').classList.remove('open');
+  refreshForm();
+  setMsg('Settings saved in this browser only.', 'ok');
+});
+
+// ---------- GitHub Contents API ----------
+const API = 'https://api.github.com/repos';
+function ghHeaders(token) {
+  return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+}
+async function ghGet(cfg) {
+  const res = await fetch(`${API}/${cfg.repo}/contents/weights.txt?ref=main`, { headers: ghHeaders(cfg.token), cache: 'no-store' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`GitHub read failed (${res.status})${body.message ? ': ' + body.message : ''} — check token/repo.`);
+  }
+  const j = await res.json();
+  if (typeof j.content !== 'string') throw new Error('weights.txt not found in that repo (check owner/repo).');
+  const text = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), c => c.charCodeAt(0)));
+  return { text, sha: j.sha };
+}
+async function ghPut(cfg, content, sha, message) {
+  const bytes = new TextEncoder().encode(content);
+  let bin = ''; bytes.forEach(b => { bin += String.fromCharCode(b); });
+  const res = await fetch(`${API}/${cfg.repo}/contents/weights.txt`, {
+    method: 'PUT', headers: { ...ghHeaders(cfg.token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, content: btoa(bin), sha, branch: 'main' }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 409 || res.status === 422) {
+      throw new Error(`File changed on GitHub meanwhile — press Save again.${body.message ? ' (' + body.message + ')' : ''}`);
+    }
+    throw new Error(`GitHub write failed (${res.status})${body.message ? ': ' + body.message : ''}.`);
+  }
+}
+
+// ---------- form ----------
+let inFlight = false;
+
+function readForm() {
+  const date = $('date').value;
+  const raw = $('weight').value.trim();
+  const weight = raw === '' ? NaN : Number(raw);
+  return { date, weight };
+}
+function refreshForm() {
+  const entry = readForm();
+  const errors = validateEntry(entry, state.entries, todayISO());
+  const { token, repo } = getConfig();
+  if (Number.isFinite(entry.weight) && entry.date) {
+    const { delta, vsDate } = previewDelta(state.entries, entry);
+    $('delta').textContent = delta === null ? 'first entry' : `${delta > 0 ? '+' : ''}${formatKg(delta)} kg vs ${vsDate}`;
+  } else {
+    $('delta').textContent = '—';
+  }
+  const configured = Boolean(token && repo);
+  const touched = $('weight').value.trim() !== '';
+  $('save').disabled = inFlight || errors.length > 0 || !configured;
+  if (inFlight) return;
+  if (errors.length && touched) setMsg(errors.join(' '), 'err');
+  else if (!configured) setMsg('Read-only: set a GitHub token in ⚙ to save entries.');
+}
+async function saveEntry(ev) {
+  ev.preventDefault();
+  if (inFlight) return;
+  const cfg = getConfig();
+  const entry = readForm();
+  const errors = validateEntry(entry, state.entries, todayISO());
+  if (errors.length) { setMsg(errors.join(' '), 'err'); return; }
+  inFlight = true;
+  refreshForm();
+  setMsg('Saving…');
+  try {
+    const { text, sha } = await ghGet(cfg);
+    const fresh = parseWeights(text);
+    const next = insertWeighIn(fresh, entry);           // throws if duplicate on GitHub side
+    await ghPut(cfg, serialiseWeights(next), sha, `weigh-in ${entry.date}: ${formatKg(entry.weight)}`);
+    state.entries = next;
+    renderChart(state.entries); renderTable(state.entries);
+    $('weight').value = '';
+    inFlight = false;
+    refreshForm();
+    setMsg(`Saved ${entry.date}: ${formatKg(entry.weight)} kg.`, 'ok');
+  } catch (err) {
+    inFlight = false;
+    refreshForm();
+    setMsg(err.message, 'err');
+  }
+}
+
+// ---------- init ----------
+async function init() {
+  $('date').value = todayISO();
+  $('date').max = todayISO();
+  const onInput = () => { if (inFlight) return; setMsg(''); refreshForm(); };
+  $('date').addEventListener('input', onInput);
+  $('weight').addEventListener('input', onInput);
+  $('form').addEventListener('submit', saveEntry);
+  $('chart').addEventListener('click', ev => {
+    const pt = ev.target.closest('.pt');
+    $('chart').querySelectorAll('.pt.show').forEach(g => g.classList.remove('show'));
+    if (pt) pt.classList.add('show');
+  });
+  try {
+    await loadAndRender();
+    refreshForm();
+  } catch (err) {
+    refreshForm();
+    setMsg(err.message, 'err');
+  }
+}
+init();
+</script>
+</body>
+</html>
