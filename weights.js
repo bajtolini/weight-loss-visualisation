@@ -48,6 +48,28 @@ export function recomputeDeltas(entries) {
   return sorted;
 }
 
+const round2 = n => Math.round(n * 100) / 100;
+const MS_PER_DAY = 864e5;
+export const PROJECTED_RATE_PER_WEEK = 0.5; // kg lost per 7 days
+
+// One expected-weight point per actual weigh-in date, assuming a steady
+// PROJECTED_RATE_PER_WEEK loss from the first entry's weight. Cumulative from
+// the start (not step-by-step) so display rounding never compounds.
+export function projectedWeights(entries) {
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length === 0) return [];
+  const t0 = Date.parse(sorted[0].date);
+  const w0 = sorted[0].weight;
+  return sorted.map(e => {
+    const days = (Date.parse(e.date) - t0) / MS_PER_DAY;
+    return { date: e.date, expected: round2(w0 - (PROJECTED_RATE_PER_WEEK / 7) * days) };
+  });
+}
+
+export function formatKg2(n) {
+  return n === null || n === undefined ? '' : n.toFixed(2);
+}
+
 export function insertWeighIn(entries, { date, weight }) {
   if (entries.some(e => e.date === date)) {
     throw new Error(`An entry for ${date} already exists`);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseWeights, serialiseWeights, formatKg, recomputeDeltas, insertWeighIn, validateEntry, previewDelta, todayISO } from '../weights.js';
+import { parseWeights, serialiseWeights, formatKg, recomputeDeltas, insertWeighIn, validateEntry, previewDelta, todayISO, projectedWeights, formatKg2 } from '../weights.js';
 
 const SAMPLE = 'date,weight,delta\n2026-08-12,87.4,\n2026-08-24,86.9,-0.5\n';
 
@@ -93,6 +93,33 @@ test('previewDelta uses nearest earlier date', () => {
 test('previewDelta returns null delta for non-finite weight', () => {
   const base = recomputeDeltas([E('2026-08-12', 87.4), E('2026-08-26', 86.4)]);
   assert.deepEqual(previewDelta(base, { date: '2026-08-19', weight: NaN }), { delta: null, vsDate: null });
+});
+
+test('projectedWeights: one point per entry, 0.5 kg/week prorated by days, 2 decimals', () => {
+  const base = [E('2026-08-12', 87.4), E('2026-08-16', 85.6), E('2026-08-25', 82.7)];
+  assert.deepEqual(projectedWeights(base), [
+    { date: '2026-08-12', expected: 87.4 },   // start = first actual weight
+    { date: '2026-08-16', expected: 87.11 },  // 87.4 - 0.5/7*4  = 87.1142... -> 87.11
+    { date: '2026-08-25', expected: 86.47 },  // 87.4 - 0.5/7*13 = 86.4714... -> 86.47
+  ]);
+});
+
+test('projectedWeights: exact weekly cadence drops exactly 0.5', () => {
+  const base = [E('2026-08-12', 87.4), E('2026-08-19', 86.0), E('2026-08-26', 85.0)];
+  assert.deepEqual(projectedWeights(base).map(p => p.expected), [87.4, 86.9, 86.4]);
+});
+
+test('projectedWeights: sorts unsorted input, handles empty and single entry', () => {
+  assert.deepEqual(projectedWeights([]), []);
+  assert.deepEqual(projectedWeights([E('2026-08-12', 87.4)]), [{ date: '2026-08-12', expected: 87.4 }]);
+  const unsorted = [E('2026-08-25', 82.7), E('2026-08-12', 87.4)];
+  assert.deepEqual(projectedWeights(unsorted).map(p => p.date), ['2026-08-12', '2026-08-25']);
+});
+
+test('formatKg2 renders two decimals', () => {
+  assert.equal(formatKg2(87.4), '87.40');
+  assert.equal(formatKg2(86.47), '86.47');
+  assert.equal(formatKg2(null), '');
 });
 
 test('todayISO formats local date', () => {
