@@ -2,6 +2,8 @@
 
 Tracks weigh-ins in `weights.txt` and plots them on a GitHub Pages page. New weigh-ins are added from the page's form and committed to this repo through the GitHub Contents API.
 
+The chart also shows a bright-red **projected line**: the assumed course of losing 0.5 kg per week, starting from the first weigh-in's weight and prorated by the actual day gaps between measurements (0.5/7 kg per day). It has exactly one point per weigh-in — a new point appears only when a new entry is saved — and the same values, rounded to two decimals, appear in the table's **Expected** column (after Delta). Expected values are derived at render time and never stored in `weights.txt`.
+
 ## Data format — `weights.txt`
 
 ```
