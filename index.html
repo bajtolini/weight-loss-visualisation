@@ -26,6 +26,8 @@
   .axis line, .axis path { stroke:var(--muted); stroke-width:1; }
   .ref line { stroke:var(--ref); stroke-dasharray:4 4; }
   .series { fill:none; stroke:var(--line); stroke-width:2; }
+  .projected { fill:none; stroke:#f00; stroke-width:2; }
+  .ppt circle { fill:#f00; }
   .pt { cursor:pointer; }
   .pt circle { fill:var(--line); }
   .pt:hover circle { r:6; }
@@ -64,7 +66,7 @@
 <table id="table"><thead><tr><th>Date</th><th>Weight</th><th>Delta</th></tr></thead><tbody></tbody></table>
 
 <script type="module">
-import { parseWeights, formatKg, insertWeighIn, validateEntry, previewDelta, serialiseWeights, todayISO } from './weights.js';
+import { parseWeights, formatKg, insertWeighIn, validateEntry, previewDelta, serialiseWeights, todayISO, projectedWeights, formatKg2 } from './weights.js';
 
 const state = { entries: [] };
 const $ = id => document.getElementById(id);
@@ -109,6 +111,17 @@ function renderChart(entries) {
     s += `<text x="${W - P.r}" y="${y(v) - 4}" text-anchor="end">${v} kg</text>`;
   }
   s += '</g>';
+  // projected series (0.5 kg/week from first weigh-in), drawn first so the
+  // actual series and its hover targets stay on top
+  const proj = projectedWeights(entries);
+  if (proj.length) {
+    const ppts = proj.map(p => [x(Date.parse(p.date)), y(p.expected)]);
+    s += `<path class="projected" d="${ppts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('')}"/>`;
+    proj.forEach((p, i) => {
+      const [px, py] = ppts[i];
+      s += `<g class="ppt"><circle cx="${px}" cy="${py}" r="3"/><title>${esc(`${p.date} · expected ${formatKg2(p.expected)} kg`)}</title></g>`;
+    });
+  }
   // series
   if (entries.length) {
     const pts = entries.map(e => [x(Date.parse(e.date)), y(e.weight)]);
