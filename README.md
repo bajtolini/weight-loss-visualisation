@@ -2,18 +2,18 @@
 
 Tracks weigh-ins in `weights.txt` and plots them on a GitHub Pages page. New weigh-ins are added from the page's form and committed to this repo through the GitHub Contents API.
 
-The chart also shows a bright-red **projected line**: the assumed course of losing 0.5 kg per week, starting from the first weigh-in's weight and prorated by the actual day gaps between measurements (0.5/7 kg per day). It has exactly one point per weigh-in — a new point appears only when a new entry is saved — and the same values, rounded to two decimals, appear in the table's **Expected** column (after Delta). Expected values are derived at render time and never stored in `weights.txt`.
+The chart also shows a bright-red **projected line**: the assumed course of losing 0.85 kg per week (the iteration-2 design rate for the 75.0 kg goal; the constant `PROJECTED_RATE_PER_WEEK` in `weights.js`), starting from the first weigh-in's weight and prorated by the actual day gaps between measurements (0.85/7 kg per day). It has exactly one point per weigh-in — a new point appears only when a new entry is saved — and the same values, rounded to two decimals, appear in the table's **Expected** column (after Delta). Expected values are derived at render time and never stored in `weights.txt`.
 
 ## Data format — `weights.txt`
 
 ```
 date,weight,delta
-2026-08-12,87.4,
-2026-08-24,86.9,-0.5
+2026-08-12,87.40,
+2026-08-24,86.90,-0.50
 ```
 
 - `date` — `YYYY-MM-DD`, ascending, unique
-- `weight` — kg, one decimal
+- `weight` — kg, two decimals
 - `delta` — kg vs. the previous line, blank on the first line (recomputed on every save, so the file can be edited by hand)
 
 ## Hosting (once)

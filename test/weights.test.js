@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseWeights, serialiseWeights, formatKg, recomputeDeltas, insertWeighIn, validateEntry, previewDelta, todayISO, projectedWeights, formatKg2 } from '../weights.js';
+import { parseWeights, serialiseWeights, formatKg, recomputeDeltas, insertWeighIn, validateEntry, previewDelta, todayISO, projectedWeights } from '../weights.js';
 
-const SAMPLE = 'date,weight,delta\n2026-08-12,87.4,\n2026-08-24,86.9,-0.5\n';
+const SAMPLE = 'date,weight,delta\n2026-08-12,87.40,\n2026-08-24,86.90,-0.50\n';
 
 test('parseWeights reads header-less rows into entries', () => {
   assert.deepEqual(parseWeights(SAMPLE), [
@@ -27,17 +27,21 @@ test('parseWeights throws on calendar-invalid dates', () => {
   assert.throws(() => parseWeights('date,weight,delta\n2026-13-45,80.0,\n'), /Bad line 2/);
 });
 
-test('serialiseWeights round-trips and formats one decimal', () => {
+test('serialiseWeights round-trips and formats two decimals', () => {
   const entries = parseWeights(SAMPLE);
   assert.equal(serialiseWeights(entries), SAMPLE);
   assert.equal(serialiseWeights([{ date: '2026-08-12', weight: 87, delta: null }]),
-    'date,weight,delta\n2026-08-12,87.0,\n');
+    'date,weight,delta\n2026-08-12,87.00,\n');
+  // legacy one-decimal rows are re-serialised with a trailing zero
+  assert.equal(serialiseWeights(parseWeights('date,weight,delta\n2026-08-12,87.4,\n2026-08-24,86.9,-0.5\n')),
+    'date,weight,delta\n2026-08-12,87.40,\n2026-08-24,86.90,-0.50\n');
 });
 
-test('formatKg', () => {
-  assert.equal(formatKg(87.4), '87.4');
-  assert.equal(formatKg(-0.5), '-0.5');
-  assert.equal(formatKg(0), '0.0');
+test('formatKg renders two decimals', () => {
+  assert.equal(formatKg(87.4), '87.40');
+  assert.equal(formatKg(86.47), '86.47');
+  assert.equal(formatKg(-0.5), '-0.50');
+  assert.equal(formatKg(0), '0.00');
   assert.equal(formatKg(null), '');
 });
 
@@ -50,9 +54,11 @@ test('recomputeDeltas sorts and recomputes, does not mutate input', () => {
   assert.equal(input[0].delta, 99); // untouched
 });
 
-test('recomputeDeltas rounds float noise to one decimal', () => {
+test('recomputeDeltas rounds float noise to two decimals', () => {
   const out = recomputeDeltas([E('2026-08-12', 87.4), E('2026-08-19', 87.1)]);
   assert.equal(out[1].delta, -0.3);
+  const out2 = recomputeDeltas([E('2026-08-12', 87.4), E('2026-08-19', 86.95)]);
+  assert.equal(out2[1].delta, -0.45);
 });
 
 test('insertWeighIn inserts mid-file and fixes neighbours', () => {
@@ -78,7 +84,8 @@ test('validateEntry', () => {
   assert.ok(validateEntry({ date: '2026-08-12', weight: 87.0 }, base, today).some(m => /already/.test(m)));
   assert.ok(validateEntry({ date: '2026-08-17', weight: 39.9 }, base, today).some(m => /40/.test(m)));
   assert.ok(validateEntry({ date: '2026-08-17', weight: 150.1 }, base, today).some(m => /150/.test(m)));
-  assert.ok(validateEntry({ date: '2026-08-17', weight: 87.45 }, base, today).some(m => /decimal/.test(m)));
+  assert.deepEqual(validateEntry({ date: '2026-08-17', weight: 87.45 }, base, today), []);
+  assert.ok(validateEntry({ date: '2026-08-17', weight: 87.455 }, base, today).some(m => /decimal/.test(m)));
   assert.ok(validateEntry({ date: '', weight: 87 }, base, today).some(m => /date/i.test(m)));
   assert.ok(validateEntry({ date: '2026-08-17', weight: NaN }, base, today).some(m => /weight/i.test(m)));
 });
@@ -86,6 +93,7 @@ test('validateEntry', () => {
 test('previewDelta uses nearest earlier date', () => {
   const base = recomputeDeltas([E('2026-08-12', 87.4), E('2026-08-26', 86.4)]);
   assert.deepEqual(previewDelta(base, { date: '2026-08-19', weight: 87.0 }), { delta: -0.4, vsDate: '2026-08-12' });
+  assert.deepEqual(previewDelta(base, { date: '2026-08-19', weight: 87.05 }), { delta: -0.35, vsDate: '2026-08-12' });
   assert.deepEqual(previewDelta(base, { date: '2026-08-01', weight: 88 }), { delta: null, vsDate: null });
   assert.deepEqual(previewDelta([], { date: '2026-08-01', weight: 88 }), { delta: null, vsDate: null });
 });
@@ -95,18 +103,18 @@ test('previewDelta returns null delta for non-finite weight', () => {
   assert.deepEqual(previewDelta(base, { date: '2026-08-19', weight: NaN }), { delta: null, vsDate: null });
 });
 
-test('projectedWeights: one point per entry, 0.5 kg/week prorated by days, 2 decimals', () => {
+test('projectedWeights: one point per entry, 0.85 kg/week prorated by days, 2 decimals', () => {
   const base = [E('2026-08-12', 87.4), E('2026-08-16', 85.6), E('2026-08-25', 82.7)];
   assert.deepEqual(projectedWeights(base), [
     { date: '2026-08-12', expected: 87.4 },   // start = first actual weight
-    { date: '2026-08-16', expected: 87.11 },  // 87.4 - 0.5/7*4  = 87.1142... -> 87.11
-    { date: '2026-08-25', expected: 86.47 },  // 87.4 - 0.5/7*13 = 86.4714... -> 86.47
+    { date: '2026-08-16', expected: 86.91 },  // 87.4 - 0.85/7*4  = 86.9142... -> 86.91
+    { date: '2026-08-25', expected: 85.82 },  // 87.4 - 0.85/7*13 = 85.8214... -> 85.82
   ]);
 });
 
-test('projectedWeights: exact weekly cadence drops exactly 0.5', () => {
+test('projectedWeights: exact weekly cadence drops exactly 0.85', () => {
   const base = [E('2026-08-12', 87.4), E('2026-08-19', 86.0), E('2026-08-26', 85.0)];
-  assert.deepEqual(projectedWeights(base).map(p => p.expected), [87.4, 86.9, 86.4]);
+  assert.deepEqual(projectedWeights(base).map(p => p.expected), [87.4, 86.55, 85.7]);
 });
 
 test('projectedWeights: sorts unsorted input, handles empty and single entry', () => {
@@ -114,12 +122,6 @@ test('projectedWeights: sorts unsorted input, handles empty and single entry', (
   assert.deepEqual(projectedWeights([E('2026-08-12', 87.4)]), [{ date: '2026-08-12', expected: 87.4 }]);
   const unsorted = [E('2026-08-25', 82.7), E('2026-08-12', 87.4)];
   assert.deepEqual(projectedWeights(unsorted).map(p => p.date), ['2026-08-12', '2026-08-25']);
-});
-
-test('formatKg2 renders two decimals', () => {
-  assert.equal(formatKg2(87.4), '87.40');
-  assert.equal(formatKg2(86.47), '86.47');
-  assert.equal(formatKg2(null), '');
 });
 
 test('todayISO formats local date', () => {
